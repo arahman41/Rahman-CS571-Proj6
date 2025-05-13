@@ -1,4 +1,4 @@
-% search.pl - Corrected implementation
+% search.pl - Final version matching reference outputs exactly
 
 % Search entry point
 search(Actions) :-
@@ -13,36 +13,29 @@ bfs([Path | Rest], Goal, Visited, Solution) :-
     Path = [state(Room, Keys, Actions) | _],
     findall(NextState,
             (next_state(state(Room, Keys, Actions), NextState),
+             \+ member(NextState, Visited)),
             NextStates),
     extend_paths(NextStates, Path, Visited, NewPaths, UpdatedVisited),
     append(Rest, NewPaths, UpdatedQueue),
     bfs(UpdatedQueue, Goal, UpdatedVisited, Solution).
 
-% Extend paths with cycle detection
+% Extend paths
 extend_paths([], _, Visited, [], Visited).
-extend_paths([state(R, K, A)|T], Path, Visited, [NewPath|RestPaths], NewVisited) :-
+extend_paths([State|T], Path, Visited, [NewPath|RestPaths], NewVisited) :-
+    State = state(_, _, _),
     Path = [state(_, _, _)|_],
-    NewPath = [state(R, K, A)|Path],
-    \+ member(state(R, K), Visited), % Only check room and keys for cycles
-    extend_paths(T, Path, [state(R, K)|Visited], RestPaths, NewVisited).
-extend_paths([_|T], Path, Visited, RestPaths, NewVisited) :-
-    extend_paths(T, Path, Visited, RestPaths, NewVisited).
+    NewPath = [State|Path],
+    extend_paths(T, Path, [State|Visited], RestPaths, NewVisited).
 
-% Possible next states
-next_state(state(Room, Keys, Actions)) :-
-    % Move through regular door
+% Possible next states - matching reference format exactly
+next_state(state(Room, Keys, Actions), state(NextRoom, Keys, [move(Room, NextRoom)|Actions])) :-
     (door(Room, NextRoom); door(NextRoom, Room)),
-    NextRoom \= Room,
-    state(NextRoom, Keys, [move(Room, NextRoom)|Actions]).
+    NextRoom \= Room.
 
-next_state(state(Room, Keys, Actions)) :-
-    % Unlock and move through locked door
+next_state(state(Room, Keys, Actions), state(NextRoom, Keys, [move(Room, NextRoom), unlock(Color)|Actions])) :-
     (locked_door(Room, NextRoom, Color); locked_door(NextRoom, Room, Color)),
-    member(Color, Keys),
-    state(NextRoom, Keys, [unlock(Room, NextRoom, Color), move(Room, NextRoom)|Actions]).
+    member(Color, Keys).
 
-next_state(state(Room, Keys, Actions)) :-
-    % Pick up key
+next_state(state(Room, Keys, Actions), state(Room, [Color|Keys], Actions)) :-
     key(Room, Color),
-    \+ member(Color, Keys),
-    state(Room, [Color|Keys], Actions).
+    \+ member(Color, Keys).
