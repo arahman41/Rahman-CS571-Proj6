@@ -1,44 +1,48 @@
-% search.pl
+% search.pl - Corrected implementation
 
 % Search entry point
 search(Actions) :-
     initial(Start),
     treasure(Goal),
-    bfs([[state(Start, [], [])]], Goal, ActionsRev),
+    bfs([[state(Start, [], [])]], Goal, [], ActionsRev),
     reverse(ActionsRev, Actions).
 
-% BFS implementation: Queue of paths with state(CurrentRoom, KeysHeld, Actions)
-bfs([[state(Room, Keys, Actions) | _] | _], Room, Actions). % Goal reached
-bfs([Path | Rest], Goal, Solution) :-
+% BFS implementation
+bfs([[state(Room, _, Actions) | _] | _], Room, _, Actions). % Goal reached
+bfs([Path | Rest], Goal, Visited, Solution) :-
     Path = [state(Room, Keys, Actions) | _],
     findall(NextState,
-            next_state(state(Room, Keys, Actions), NextState),
+            (next_state(state(Room, Keys, Actions), NextState),
             NextStates),
-    extend_paths(NextStates, Path, NewPaths),
+    extend_paths(NextStates, Path, Visited, NewPaths, UpdatedVisited),
     append(Rest, NewPaths, UpdatedQueue),
-    bfs(UpdatedQueue, Goal, Solution).
+    bfs(UpdatedQueue, Goal, UpdatedVisited, Solution).
 
-% Extend path: avoid revisiting same room with same key set
-extend_paths([], _, []).
-extend_paths([state(R, K, A)|T], [state(_, _, _)|PathTail], [[state(R, K, A), state(_, _, _)|PathTail]|Rest]) :-
-    \+ member(state(R, K, _), [state(_, _, _)|PathTail]), % avoid cycles
-    extend_paths(T, [state(_, _, _)|PathTail], Rest).
-extend_paths([_|T], P, Rest) :- extend_paths(T, P, Rest).
+% Extend paths with cycle detection
+extend_paths([], _, Visited, [], Visited).
+extend_paths([state(R, K, A)|T], Path, Visited, [NewPath|RestPaths], NewVisited) :-
+    Path = [state(_, _, _)|_],
+    NewPath = [state(R, K, A)|Path],
+    \+ member(state(R, K), Visited), % Only check room and keys for cycles
+    extend_paths(T, Path, [state(R, K)|Visited], RestPaths, NewVisited).
+extend_paths([_|T], Path, Visited, RestPaths, NewVisited) :-
+    extend_paths(T, Path, Visited, RestPaths, NewVisited).
 
-% Possible next states: move through open doors, unlock doors if key held, pick up keys
-next_state(state(Room, Keys, Actions), state(NextRoom, Keys, [move(Room, NextRoom)|Actions])) :-
-    door(Room, NextRoom);
-    door(NextRoom, Room),
-    \+ member(move(Room, NextRoom), Actions),
-    \+ member(move(NextRoom, Room), Actions).
+% Possible next states
+next_state(state(Room, Keys, Actions)) :-
+    % Move through regular door
+    (door(Room, NextRoom); door(NextRoom, Room)),
+    NextRoom \= Room,
+    state(NextRoom, Keys, [move(Room, NextRoom)|Actions]).
 
-next_state(state(Room, Keys, Actions), state(NextRoom, Keys, [unlock(Room, NextRoom, Color), move(Room, NextRoom)|Actions])) :-
-    locked_door(Room, NextRoom, Color);
-    locked_door(NextRoom, Room, Color),
+next_state(state(Room, Keys, Actions)) :-
+    % Unlock and move through locked door
+    (locked_door(Room, NextRoom, Color); locked_door(NextRoom, Room, Color)),
     member(Color, Keys),
-    \+ member(move(Room, NextRoom), Actions),
-    \+ member(move(NextRoom, Room), Actions).
+    state(NextRoom, Keys, [unlock(Room, NextRoom, Color), move(Room, NextRoom)|Actions]).
 
-next_state(state(Room, Keys, Actions), state(Room, [Color|Keys], Actions)) :-
+next_state(state(Room, Keys, Actions)) :-
+    % Pick up key
     key(Room, Color),
-    \+ member(Color, Keys).
+    \+ member(Color, Keys),
+    state(Room, [Color|Keys], Actions).
